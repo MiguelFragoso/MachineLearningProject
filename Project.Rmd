@@ -1,0 +1,84 @@
+---
+title: "Machine Learning Project"
+author: "Miguel Fragoso"
+date: "18 de Março de 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+This project is for the Machine Learning Coursera Course of Johns Hopkins University, and the goal is an attempt to assess whether we could identify mistakes in weight-lifting exercise activities by using some machine learning algorithm. So, in this report we will try to predict the quality of an exercise performed by an athlete. The original data set used in this analysis was generously made available by the [Human Activity Recognition project](http://groupware.les.inf.puc-rio.br/har). In this study, several athletes were asked to perform some weight lifting exercises in 5 different ways, only one of which is the correct way of performing the lifting. The project supplied two datasets, a [training](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) and [testing](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv) datasets. Each of these datasets contain several recordable variables that we will use to predict the outcome **classe** which represents the class a given exercise belong to. The **classe** varibale is a factor variable with four levels A,B,C,D,E. These levels are supplied in the training dataset but not in the testing dataset. In this report we will be trying to predict the **classe** for each of the 20 observations provided in the testing dataset.
+The model we come up with to identify mistakes depends a lot on how we collect the data, which is that we need a supervisor to guide the volunteers in a uniform manner. Under this condition, the analysis shows that using machine learning algorithm is a good approach to identifying mistakes in weight-lifting with very high accuracy.
+
+## Data Preparation and Exploratory Analysis
+
+Starting by loading the required libraries and the two datasets. Then, a summary of the variables in the training dataset shows us that there are variables that are incomplete  (i.e., contains NA). We remove these variables from the dataset of selected features.
+```{r}
+RawTrainDat <- read.csv('pml-training.csv', header = TRUE)
+RawTestDat  <- read.csv('pml-testing.csv',  header = TRUE)
+IsColNA     <- (colSums(is.na(RawTrainDat)) > 0) # remove all incomplete columns (columns with NAs)
+str(RawTrainDat[ , IsColNA], list.len = 5)
+```
+Next, in the preparation of the data, we see that the factor features that are not "classe" are not inherently factors, but are numbers that the software are not able to cast, since they are incomplete, empty strings, or not well-formatted. These variables would not be useful for training the model, so also eliminate these from the selected set of features.
+```{r}
+IsFactorPredictor <- unlist(sapply(RawTrainDat[1, ], is.factor))
+IsFactorPredictor[length(IsFactorPredictor)] <- FALSE
+str(RawTrainDat[, IsFactorPredictor], list.len = 5)
+```
+Finally, there are variables such as the timestamps and the indices of data records that are not really meaningful to the model training, so we remove those from the selected features.
+```{r}
+IsNotRelevant      <- rep(FALSE, ncol(RawTrainDat))
+IsNotRelevant[1:7] <- TRUE
+str(RawTrainDat[ , IsNotRelevant], list.len = 10)
+# Extract the traning and validation data
+TrainCvDat <- RawTrainDat[ , ! (IsColNA|IsFactorPredictor | IsNotRelevant) ]
+# Get list of predictors by removing "classe"
+PredictorsNames <- names(TrainCvDat)
+PredictorsIdx   <- grep("^classe", PredictorsNames, invert = TRUE)
+PredictorsNames <- PredictorsNames[PredictorsIdx]
+```
+
+### Splitting the Data
+
+Splitting the Data for Training and Cross-validation, with the proportion of 80% and 20%, respectively. The reason for this is that after we obtain our model, we will be using the cross validation data to test the accuracy of our model.
+```{r}
+suppressMessages(library(caret))
+set.seed(13579)
+IdxInTrainDat <- createDataPartition(y=TrainCvDat$classe, p = 0.8, list = FALSE)
+TrainDat      <- TrainCvDat[IdxInTrainDat, ]
+CvDat         <- TrainCvDat[-IdxInTrainDat, ]
+```
+
+## Built the Model
+
+Since all the predictors are continuous variables we will employ the Random Forest algorithm for fitting the model.
+```{r}
+suppressMessages(library(randomForest))
+RfModel <- randomForest(classe ~ ., data = TrainDat)
+```
+
+## Cross Validation
+
+To test our model on the cross validation dataset, we implemented a manual 2-fold cross validation applied on the data split above to assess the out-of-sample error of the model that we fit previously.
+```{r}
+CvResults <- predict(RfModel, CvDat[, PredictorsNames])
+CvSummary <- confusionMatrix(CvDat[, "classe"], CvResults)
+CvSummary
+```
+Analyzing the confusion matrix summary above, we can see that the model that we fit has a very high accuracy of 99.75% on the cross validation data.
+
+## Prediction
+
+For the prediction we use the testing dataset, so we applied the above model to classify the activities based on the data from 20 provided test cases.
+```{r}
+Results <- predict(RfModel, RawTestDat[, PredictorsNames])
+Results
+```
+
+## Conclusion
+
+Analyzing the results, we see that the model we come up with, identify mistakes depends a lot on how we collect the data, which is that we need a supervisor to guide the volunteers in a uniform manner. Under this condition, the analysis shows that using machine learning algorithm is a good approach to identifying mistakes in weight-lifting with very high accuracy of 99.75%.  
